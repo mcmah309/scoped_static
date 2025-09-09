@@ -43,11 +43,21 @@ impl<'a, T: 'static> Scoped<'a, T> {
     }
 }
 
+#[cfg(any(feature = "min_safety", debug_assertions))]
 impl<'a, T> Deref for Scoped<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
         self.data.as_ref()
+    }
+}
+
+#[cfg(not(any(feature = "min_safety", debug_assertions)))]
+impl<'a, T> Deref for Scoped<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.data
     }
 }
 
