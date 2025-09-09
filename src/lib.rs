@@ -72,8 +72,6 @@ impl<T: 'static> Deref for SArc<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::Scope;
-
     struct NonCopy(f32);
 
     impl NonCopy {
@@ -85,84 +83,115 @@ mod tests {
         }
     }
 
-    #[test]
-    fn dangling() {
-        let concrete_value = Box::new(NonCopy::new());
-        let ref_value = &concrete_value;
-        let scope = Scope::new(ref_value);
-        let sarc = scope.lift();
-        sarc.access_value();
-        let result = std::panic::catch_unwind(|| {
+    #[cfg(test)]
+    mod normal_tests {
+        use crate::{tests::NonCopy, Scope};
+
+
+        #[test]
+        fn dangling() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
+            sarc.access_value();
+            let result = std::panic::catch_unwind(|| {
+                std::mem::drop(scope);
+            });
+
+            assert!(
+                result.is_err(),
+                "expected panic when dropping scope with live SArc"
+            );
+        }
+
+        #[test]
+        fn valid() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
+            sarc.access_value();
+            std::mem::drop(sarc);
             std::mem::drop(scope);
-        });
+        }
 
-        assert!(
-            result.is_err(),
-            "expected panic when dropping scope with live SArc"
-        );
-    }
-
-    #[test]
-    fn valid() {
-        let concrete_value = Box::new(NonCopy::new());
-        let ref_value = &concrete_value;
-        let scope = Scope::new(ref_value);
-        let sarc = scope.lift();
-        sarc.access_value();
-        std::mem::drop(sarc);
-        std::mem::drop(scope);
-    }
-
-    #[tokio::test]
-    async fn async_dangling() {
-        let concrete_value = Box::new(NonCopy::new());
-        let ref_value = &concrete_value;
-        let scope = Scope::new(ref_value);
-        let sarc = scope.lift();
-        sarc.access_value();
-        tokio::spawn(async move {
+        #[tokio::test]
+        async fn async_dangling() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
             sarc.access_value();
-        });
-        let result = std::panic::catch_unwind(|| {
+            tokio::spawn(async move {
+                sarc.access_value();
+            });
+            let result = std::panic::catch_unwind(|| {
+                std::mem::drop(scope);
+            });
+            assert!(
+                result.is_err(),
+                "expected panic when dropping scope with live SArc in the task"
+            );
+        }
+
+        #[tokio::test]
+        async fn async_valid() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
+            sarc.access_value();
+            tokio::spawn(async move {
+                sarc.access_value();
+            })
+            .await
+            .unwrap();
             std::mem::drop(scope);
-        });
-        assert!(
-            result.is_err(),
-            "expected panic when dropping scope with live SArc in the task"
-        );
+        }
+
+        #[cfg(miri)]
+        #[test]
+        #[should_panic]
+        fn undefined_behavior() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
+            sarc.access_value();
+            std::mem::forget(scope);
+            std::mem::drop(concrete_value);
+            let result = std::panic::catch_unwind(|| {
+                // The assert here should fail (Showing UB) in a testable way
+                sarc.access_value();
+            });
+            assert!(
+                result.is_err(),
+                "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+            );
+        }
     }
 
-    #[tokio::test]
-    async fn async_valid() {
-        let concrete_value = Box::new(NonCopy::new());
-        let ref_value = &concrete_value;
-        let scope = Scope::new(ref_value);
-        let sarc = scope.lift();
-        sarc.access_value();
-        tokio::spawn(async move {
-            sarc.access_value();
-        })
-        .await
-        .unwrap();
-        std::mem::drop(scope);
-    }
+    mod ub_tests {
+        use crate::{tests::NonCopy, Scope};
 
-    #[test]
-    fn undefined_behavior() {
-        let concrete_value = Box::new(NonCopy::new());
-        let ref_value = &concrete_value;
-        let scope = Scope::new(ref_value);
-        let sarc = scope.lift();
-        sarc.access_value();
-        std::mem::forget(scope);
-        std::mem::drop(concrete_value);
-        let result = std::panic::catch_unwind(|| {
-            // The assert here should fail (Showing UB) in a testable way
+        #[test]
+        fn undefined_behavior() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
             sarc.access_value();
-        });
-        assert!(
-            result.is_err(),
-            "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
-        );
+            std::mem::forget(scope);
+            std::mem::drop(concrete_value);
+            let result = std::panic::catch_unwind(|| {
+                // The assert here should fail (Showing UB) in a testable way
+                sarc.access_value();
+            });
+            assert!(
+                result.is_err(),
+                "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+            );
+        }
     }
 }

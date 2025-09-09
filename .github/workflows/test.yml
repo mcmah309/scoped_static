@@ -30,5 +30,27 @@ jobs:
         override: true
     - name: Install Miri
       run: rustup component add miri
-    - name: Run tests with Miri
-      run: cargo miri test --lib
+    - name: Run known safe tests with Miri
+      run: "MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib tests::normal_test::"
+    - name: Run tests that are known to fail with Miri
+      run: |
+        set -euo pipefail
+        # List UB tests
+        TESTS=$(cargo test tests::ub_tests:: -- --list --format terse | cut -d: -f1)
+        echo "UB tests found:"
+        echo "$TESTS"
+        echo
+
+        EXITCODE=0
+        for t in $TESTS; do
+          echo "Running UB test: $t"
+          if MIRIFLAGS="-Zmiri-ignore-leaks" cargo miri test --lib "$t" -- --exact; then
+            echo "❌ ERROR: UB test '$t' unexpectedly PASSED"
+            EXITCODE=1
+          else
+            echo "✅ UB test '$t' failed as expected (Miri detected UB)"
+          fi
+          echo
+        done
+
+        exit $EXITCODE

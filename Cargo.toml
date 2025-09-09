@@ -9,4 +9,5 @@ edition = "2024"
 tokio = { version = "1", features = ["full"] }
 
 [features]
-default = []
+default = ["min_safety"]
+min_safety = []
