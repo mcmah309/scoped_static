@@ -2,17 +2,19 @@
 use std::sync::Arc;
 use std::{marker::PhantomData, mem, ops::Deref};
 
-/// A scope that holds a reference with lifetime `'a` that be converted to a reference with a
-/// `'static` lifetime. Runtime checks are used to ensure that no `SArc` exists when this `Scope` is
-/// dropped. If a `Scope` is dropped while any derived `SArc` exist. Then it will abort the whole
-/// program instead of panic. This is because `SArc` could exist on another thread and be unaffected
+/// A reference with lifetime `'a` that be lifted to a reference with a 'static` lifetime (`Lifted`).
+/// Runtime checks are used to ensure that no derived `Lifted` exists when this `Scoped` is
+/// dropped. If a `Scoped` is dropped while any derived `Lifted` exist, then it will abort the whole
+/// program (instead of panic). This is because `Lifted` could exist on another thread and be unaffected
 /// by the panic or the panic could be recovered from. This could lead to undefined behavior.
 ///
-/// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(scope)`),
+/// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(scope)`) -
 /// the `Drop` code must run to prevent undefined behavior. If the default `min_safety` flag is not
-/// enabled, this may cause undefined behavior in other scenarios during non-debug mode.
+/// enabled, in non-debug mode, 
+/// this may cause undefined behavior if `Scoped` is drop before all derived `Lifted` are dropped.
+/// This is because there are no runtime safety checks in this scenario and the program will not abort.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Scope<'a, T: 'static> {
+pub struct Scoped<'a, T: 'static> {
     #[cfg(any(feature = "min_safety", debug_assertions))]
     data: Arc<&'static T>,
     #[cfg(not(any(feature = "min_safety", debug_assertions)))]
@@ -20,35 +22,43 @@ pub struct Scope<'a, T: 'static> {
     _scope: PhantomData<&'a ()>,
 }
 
-impl<'a, T: 'static> Scope<'a, T> {
+impl<'a, T: 'static> Scoped<'a, T> {
     pub fn new(value: &'a T) -> Self {
         let value = unsafe { mem::transmute::<&'a T, &'static T>(value) };
         #[cfg(any(feature = "min_safety", debug_assertions))]
         let value = Arc::new(value);
-        Scope {
+        Scoped {
             data: value,
             _scope: std::marker::PhantomData,
         }
     }
 
-    /// Lifts reference with lifetime `'a` out of the scope into `'static` and relies on runtime
-    /// Checks to ensure safety.
-    pub fn lift(&self) -> SArc<T> {
+    /// Lifts this reference with lifetime `'a` into `'static` and relies on runtime
+    /// checks to ensure safety.
+    pub fn lift(&self) -> Lifted<T> {
         #[cfg(any(feature = "min_safety", debug_assertions))]
-        return SArc(self.data.clone());
+        return Lifted(self.data.clone());
         #[cfg(not(any(feature = "min_safety", debug_assertions)))]
-        return SArc(self.data);
+        return Lifted(self.data);
     }
 }
 
-impl<'a, T: 'static> Drop for Scope<'a, T> {
+impl<'a, T> Deref for Scoped<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.data.as_ref()
+    }
+}
+
+impl<'a, T: 'static> Drop for Scoped<'a, T> {
     fn drop(&mut self) {
         #[cfg(any(feature = "min_safety", debug_assertions))]
         {
             if std::sync::Arc::strong_count(&self.data) != 1 {
-                const ROOT_MSG: &str = "Fatal error: Scope dropped while SArc references still exist. \
+                const ROOT_MSG: &str = "Fatal error: Scope dropped while Lifted references still exist. \
                 This would cause undefined behavior. Aborting.\n";
-                // We don't panic since panics can be recovered and panics also only effect a single thread
+                // We don't panic since panics can be recovered and panics also only effect a single thread.
                 // While the value could have been sent to a different thread.
                 #[cfg(not(test))]
                 {
@@ -77,16 +87,20 @@ impl<'a, T: 'static> Drop for Scope<'a, T> {
     }
 }
 
+/// A reference derived from a `Scoped`. The lifetime of the underlying
+/// value has been lifted to `'static`. See `Scoped` for more info.
 #[cfg(any(feature = "min_safety", debug_assertions))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SArc<T: 'static>(Arc<&'static T>);
+pub struct Lifted<T: 'static>(Arc<&'static T>);
 
+/// A reference derived from a `Scoped`. The lifetime of the underlying
+/// value has been lifted to `'static`. See `Scoped` for more info.
 #[cfg(not(any(feature = "min_safety", debug_assertions)))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SArc<T: 'static>(&'static T);
+pub struct Lifted<T: 'static>(&'static T);
 
 #[cfg(any(feature = "min_safety", debug_assertions))]
-impl<T: 'static> Deref for SArc<T> {
+impl<T: 'static> Deref for Lifted<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -95,7 +109,7 @@ impl<T: 'static> Deref for SArc<T> {
 }
 
 #[cfg(not(any(feature = "min_safety", debug_assertions)))]
-impl<T: 'static> Deref for SArc<T> {
+impl<T: 'static> Deref for Lifted<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -118,22 +132,22 @@ mod tests {
 
     #[cfg(test)]
     mod normal_tests {
-        use crate::{Scope, tests::NonCopy};
+        use crate::{Scoped, tests::NonCopy};
 
         #[test]
         fn dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
             let result = std::panic::catch_unwind(|| {
                 std::mem::drop(scope);
             });
             #[cfg(any(feature = "min_safety", debug_assertions))]
             assert!(
                 result.is_err(),
-                "expected panic when dropping scope with live SArc"
+                "expected panic when dropping scope with live Lifted"
             );
             #[cfg(not(any(feature = "min_safety", debug_assertions)))]
             assert!(
@@ -146,10 +160,10 @@ mod tests {
         fn valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
-            std::mem::drop(sarc);
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
+            std::mem::drop(lifted);
             std::mem::drop(scope);
         }
 
@@ -157,11 +171,11 @@ mod tests {
         async fn async_dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
             tokio::spawn(async move {
-                sarc.access_value();
+                lifted.access_value();
             });
             let result = std::panic::catch_unwind(|| {
                 std::mem::drop(scope);
@@ -169,7 +183,7 @@ mod tests {
             #[cfg(any(feature = "min_safety", debug_assertions))]
             assert!(
                 result.is_err(),
-                "expected panic when dropping scope with live SArc in the task"
+                "expected panic when dropping scope with live Lifted in the task"
             );
             #[cfg(not(any(feature = "min_safety", debug_assertions)))]
             assert!(
@@ -182,11 +196,11 @@ mod tests {
         async fn async_valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
             tokio::spawn(async move {
-                sarc.access_value();
+                lifted.access_value();
             })
             .await
             .unwrap();
@@ -199,42 +213,42 @@ mod tests {
         fn undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
             std::mem::forget(scope);
             std::mem::drop(concrete_value);
             let result = std::panic::catch_unwind(|| {
                 // The assert here should fail (Showing UB) in a testable way
-                sarc.access_value();
+                lifted.access_value();
             });
             assert!(
                 result.is_err(),
-                "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+                "Forgetting the scope, dropping the underlying, then accessing an Lifted value should be UB"
             );
         }
     }
 
     #[cfg(test)]
     mod ub_tests {
-        use crate::{Scope, tests::NonCopy};
+        use crate::{Scoped, tests::NonCopy};
 
         #[test]
         fn undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
             std::mem::forget(scope);
             std::mem::drop(concrete_value);
             let result = std::panic::catch_unwind(|| {
                 // The assert here should fail (Showing UB) in a testable way
-                sarc.access_value();
+                lifted.access_value();
             });
             assert!(
                 result.is_err(),
-                "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+                "Forgetting the scope, dropping the underlying, then accessing an Lifted value should be UB"
             );
         }
 
@@ -242,13 +256,13 @@ mod tests {
         async fn async_undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let scope = Scope::new(ref_value);
-            let sarc = scope.lift();
-            sarc.access_value();
+            let scope = Scoped::new(ref_value);
+            let lifted = scope.lift();
+            lifted.access_value();
             let fut = tokio::spawn(async move {
                 let result = std::panic::catch_unwind(|| {
                     // The assert here should fail (Showing UB) in a testable way
-                    sarc.access_value();
+                    lifted.access_value();
                 });
                 result
             });
@@ -257,7 +271,7 @@ mod tests {
             let result = fut.await.unwrap();
             assert!(
                 result.is_err(),
-                "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+                "Forgetting the scope, dropping the underlying, then accessing an Lifted value should be UB"
             );
         }
     }
