@@ -33,6 +33,8 @@ impl<'a, T: 'static> Drop for Scope<'a, T> {
         if std::sync::Arc::strong_count(&self.data) != 1 {
             const ROOT_MSG: &str = "Fatal error: Scope dropped while SArc references still exist. \
                 This would cause undefined behavior. Aborting.\n";
+            // We don't panic since panics can be recovered and panics also only effect a single thread
+            // While the value could have been sent to a different thread.
             #[cfg(not(test))]
             {
                 let bt = std::backtrace::Backtrace::capture();
