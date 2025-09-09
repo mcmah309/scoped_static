@@ -1,6 +1,4 @@
-use std::{
-    backtrace::Backtrace, io::Write, marker::PhantomData, mem, ops::Deref, process::exit, sync::Arc,
-};
+use std::{marker::PhantomData, mem, ops::Deref, sync::Arc};
 
 /// A scope that holds a reference with lifetime `'a` that be converted to a reference with a
 /// `'static` lifetime. Runtime checks are used to ensure that no `SArc` exists when this `Scope` is
@@ -37,7 +35,7 @@ impl<'a, T: 'static> Drop for Scope<'a, T> {
                 This would cause undefined behavior. Aborting.\n";
             #[cfg(not(test))]
             {
-                let bt = Backtrace::capture();
+                let bt = std::backtrace::Backtrace::capture();
                 let msg = match bt.status() {
                     std::backtrace::BacktraceStatus::Unsupported => ROOT_MSG.to_owned(),
                     std::backtrace::BacktraceStatus::Disabled => format!(
@@ -48,6 +46,7 @@ impl<'a, T: 'static> Drop for Scope<'a, T> {
                     }
                     _ => ROOT_MSG.to_owned(),
                 };
+                use std::io::Write;
                 let _ = std::io::stderr().write_all(msg.as_bytes());
                 let _ = std::io::stderr().flush();
                 std::process::abort();
@@ -81,7 +80,6 @@ mod tests {
         fn do_nothing(&self) {}
     }
 
-
     #[test]
     fn dangling() {
         let concrete_value = NonCopy;
@@ -93,7 +91,10 @@ mod tests {
             std::mem::drop(scope);
         });
 
-        assert!(result.is_err(), "expected panic when dropping scope with live SArc");
+        assert!(
+            result.is_err(),
+            "expected panic when dropping scope with live SArc"
+        );
     }
 
     #[test]
@@ -120,7 +121,10 @@ mod tests {
         let result = std::panic::catch_unwind(|| {
             std::mem::drop(scope);
         });
-        assert!(result.is_err(), "expected panic when dropping scope with live SArc in the task");
+        assert!(
+            result.is_err(),
+            "expected panic when dropping scope with live SArc in the task"
+        );
     }
 
     #[tokio::test]
@@ -132,7 +136,9 @@ mod tests {
         sarc.do_nothing();
         tokio::spawn(async move {
             sarc.do_nothing();
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
         std::mem::drop(scope);
     }
 }
