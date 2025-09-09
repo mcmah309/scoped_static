@@ -81,14 +81,13 @@ mod tests {
             NonCopy(1.0)
         }
         pub fn access_value(&self) {
-            assert_eq!(self.0, 1.0);
+            assert_eq!(self.0, 1.0, "If these values are not equal it signals UB");
         }
     }
 
     #[cfg(test)]
     mod normal_tests {
-        use crate::{tests::NonCopy, Scope};
-
+        use crate::{Scope, tests::NonCopy};
 
         #[test]
         fn dangling() {
@@ -174,8 +173,9 @@ mod tests {
         }
     }
 
+    #[cfg(test)]
     mod ub_tests {
-        use crate::{tests::NonCopy, Scope};
+        use crate::{Scope, tests::NonCopy};
 
         #[test]
         fn undefined_behavior() {
@@ -190,6 +190,29 @@ mod tests {
                 // The assert here should fail (Showing UB) in a testable way
                 sarc.access_value();
             });
+            assert!(
+                result.is_err(),
+                "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+            );
+        }
+
+        #[tokio::test]
+        async fn async_undefined_behavior() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let scope = Scope::new(ref_value);
+            let sarc = scope.lift();
+            sarc.access_value();
+            let fut = tokio::spawn(async move {
+                let result = std::panic::catch_unwind(|| {
+                    // The assert here should fail (Showing UB) in a testable way
+                    sarc.access_value();
+                });
+                result
+            });
+            std::mem::forget(scope);
+            std::mem::drop(concrete_value);
+            let result = fut.await.unwrap();
             assert!(
                 result.is_err(),
                 "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
