@@ -12,5 +12,5 @@ tokio = { version = "1", features = ["full"] }
 default = ["min_safety"]
 # If disabled, there is no runtime safety checks in non-debug mode.
 # Increasing the risk of UB. But a lot more efficient since no underlying `Arc` is used.
-# Only consider disabling this if one is certain `Scope` is dropped after all `SArc`.
+# Only consider disabling this if one is certain `Scoped` is dropped after all `Lifted`.
 min_safety = []
