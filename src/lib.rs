@@ -75,17 +75,64 @@ impl<T: 'static> Deref for SArc<T> {
 mod tests {
     use crate::Scope;
 
+    struct NonCopy;
+
+    impl NonCopy {
+        fn do_nothing(&self) {}
+    }
+
 
     #[test]
     fn dangling() {
-        let x = 1;
-        let y = &x;
-        let scope = Scope::new(y);
+        let concrete_value = NonCopy;
+        let ref_value = &concrete_value;
+        let scope = Scope::new(ref_value);
         let sarc = scope.lift();
+        sarc.do_nothing();
         let result = std::panic::catch_unwind(|| {
             std::mem::drop(scope);
         });
 
         assert!(result.is_err(), "expected panic when dropping scope with live SArc");
+    }
+
+    #[test]
+    fn valid() {
+        let concrete_value = NonCopy;
+        let ref_value = &concrete_value;
+        let scope = Scope::new(ref_value);
+        let sarc = scope.lift();
+        sarc.do_nothing();
+        std::mem::drop(sarc);
+        std::mem::drop(scope);
+    }
+
+    #[tokio::test]
+    async fn async_dangling() {
+        let concrete_value = NonCopy;
+        let ref_value = &concrete_value;
+        let scope = Scope::new(ref_value);
+        let sarc = scope.lift();
+        sarc.do_nothing();
+        tokio::spawn(async move {
+            sarc.do_nothing();
+        });
+        let result = std::panic::catch_unwind(|| {
+            std::mem::drop(scope);
+        });
+        assert!(result.is_err(), "expected panic when dropping scope with live SArc in the task");
+    }
+
+    #[tokio::test]
+    async fn async_valid() {
+        let concrete_value = NonCopy;
+        let ref_value = &concrete_value;
+        let scope = Scope::new(ref_value);
+        let sarc = scope.lift();
+        sarc.do_nothing();
+        tokio::spawn(async move {
+            sarc.do_nothing();
+        }).await.unwrap();
+        std::mem::drop(scope);
     }
 }
