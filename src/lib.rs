@@ -1,4 +1,6 @@
-use std::{backtrace::Backtrace, io::Write, marker::PhantomData, mem, ops::Deref, process::exit, sync::Arc};
+use std::{
+    backtrace::Backtrace, io::Write, marker::PhantomData, mem, ops::Deref, process::exit, sync::Arc,
+};
 
 /// A scope that holds a reference with lifetime `'a` that be converted to a reference with a
 /// `'static` lifetime. Runtime checks are used to ensure that no `SArc` exists when this `Scope` is
@@ -31,19 +33,29 @@ impl<'a, T: 'static> Scope<'a, T> {
 impl<'a, T: 'static> Drop for Scope<'a, T> {
     fn drop(&mut self) {
         if std::sync::Arc::strong_count(&self.data) != 1 {
-            let bt = Backtrace::capture();
             const ROOT_MSG: &str = "Fatal error: Scope dropped while SArc references still exist. \
                 This would cause undefined behavior. Aborting.\n";
-            let msg = match bt.status() {
-                std::backtrace::BacktraceStatus::Unsupported => ROOT_MSG.to_owned(),
-                std::backtrace::BacktraceStatus::Disabled => format!("{ROOT_MSG}\n(Hint: re-run with `RUST_BACKTRACE=1` to see a backtrace.)\n"),
-                std::backtrace::BacktraceStatus::Captured => format!("{ROOT_MSG}\nBacktrace:\n{bt}\n"),
-                _ => ROOT_MSG.to_owned(),
-            };
-
-            let _ = std::io::stderr().write_all(msg.as_bytes());
-            let _ = std::io::stderr().flush();
-            std::process::abort();
+            #[cfg(not(test))]
+            {
+                let bt = Backtrace::capture();
+                let msg = match bt.status() {
+                    std::backtrace::BacktraceStatus::Unsupported => ROOT_MSG.to_owned(),
+                    std::backtrace::BacktraceStatus::Disabled => format!(
+                        "{ROOT_MSG}\n(Hint: re-run with `RUST_BACKTRACE=1` to see a backtrace.)\n"
+                    ),
+                    std::backtrace::BacktraceStatus::Captured => {
+                        format!("{ROOT_MSG}\nBacktrace:\n{bt}\n")
+                    }
+                    _ => ROOT_MSG.to_owned(),
+                };
+                let _ = std::io::stderr().write_all(msg.as_bytes());
+                let _ = std::io::stderr().flush();
+                std::process::abort();
+            }
+            #[cfg(test)]
+            {
+                panic!("{}", ROOT_MSG);
+            }
         }
     }
 }
@@ -56,5 +68,24 @@ impl<T: 'static> Deref for SArc<T> {
 
     fn deref(&self) -> &Self::Target {
         self.0.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Scope;
+
+
+    #[test]
+    fn dangling() {
+        let x = 1;
+        let y = &x;
+        let scope = Scope::new(y);
+        let sarc = scope.lift();
+        let result = std::panic::catch_unwind(|| {
+            std::mem::drop(scope);
+        });
+
+        assert!(result.is_err(), "expected panic when dropping scope with live SArc");
     }
 }
