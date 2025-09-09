@@ -35,8 +35,8 @@ jobs:
     - name: Run tests that are known to fail with Miri
       run: |
         set -euo pipefail
-        # List UB tests
-        TESTS=$(cargo test tests::ub_tests:: -- --list --format terse | cut -d: -f1)
+        # List only UB test functions (not modules)
+        TESTS=$(cargo test tests::ub_tests:: -- --list --format terse | grep 'tests::ub_tests::' | cut -d: -f1)
         echo "UB tests found:"
         echo "$TESTS"
         echo
