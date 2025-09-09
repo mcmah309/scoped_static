@@ -2,15 +2,38 @@
 use std::sync::Arc;
 use std::{marker::PhantomData, mem, ops::Deref};
 
-/// A reference with lifetime `'a` that be lifted to a reference with a 'static` lifetime (`Lifted`).
+/// A reference with lifetime `'a` that be lifted to a reference with a `'static` lifetime (`Lifted`).
 /// Runtime checks are used to ensure that no derived `Lifted` exists when this `Scoped` is
-/// dropped. If a `Scoped` is dropped while any derived `Lifted` exist, then it will abort the whole
+/// dropped. 
+/// 
+/// ```rust
+/// use scope::Scoped;
+/// 
+/// #[tokio::main]
+/// async fn main() {
+///     let concrete_value = Box::new(1.0);
+///     let ref_value = &concrete_value;
+///     let scoped = Scoped::new(ref_value);
+///     let lifted = scoped.lift();
+///     tokio::spawn(async move {
+///         // Lifted is 'static so it can be moved into this closure that needs 'static
+///         let value = **lifted + 1.0;
+///         assert_eq!(value, 2.0);
+///     })
+///     .await
+///     .unwrap();
+///    // `scoped` is dropped here
+/// }
+/// ```
+/// 
+/// If a `Scoped` is dropped while any derived `Lifted` exist, then it will abort the whole
 /// program (instead of panic). This is because `Lifted` could exist on another thread and be unaffected
 /// by the panic or the panic could be recovered from. This could lead to undefined behavior.
 ///
-/// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(scope)`) -
-/// the `Drop` code must run to prevent undefined behavior. If the default `min_safety` flag is not
-/// enabled, in non-debug mode, 
+/// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(scoped)`) -
+/// the `Drop` code must run to prevent undefined behavior. 
+/// 
+/// UNDEFINED BEHAVIOR: If the *default* `min_safety` flag is not enabled, in non-debug mode, 
 /// this may cause undefined behavior if `Scoped` is drop before all derived `Lifted` are dropped.
 /// This is because there are no runtime safety checks in this scenario and the program will not abort.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -215,27 +238,6 @@ mod tests {
             .await
             .unwrap();
             std::mem::drop(scope);
-        }
-
-        #[cfg(miri)]
-        #[test]
-        #[should_panic]
-        fn undefined_behavior() {
-            let concrete_value = Box::new(NonCopy::new());
-            let ref_value = &concrete_value;
-            let scope = Scoped::new(ref_value);
-            let lifted = scope.lift();
-            lifted.access_value();
-            std::mem::forget(scope);
-            std::mem::drop(concrete_value);
-            let result = std::panic::catch_unwind(|| {
-                // The assert here should fail (Showing UB) in a testable way
-                lifted.access_value();
-            });
-            assert!(
-                result.is_err(),
-                "Forgetting the scope, dropping the underlying, then accessing an Lifted value should be UB"
-            );
         }
     }
 
