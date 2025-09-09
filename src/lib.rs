@@ -74,19 +74,24 @@ impl<T: 'static> Deref for SArc<T> {
 mod tests {
     use crate::Scope;
 
-    struct NonCopy;
+    struct NonCopy(f32);
 
     impl NonCopy {
-        fn do_nothing(&self) {}
+        pub fn new() -> Self {
+            NonCopy(1.0)
+        }
+        pub fn access_value(&self) {
+            assert_eq!(self.0, 1.0);
+        }
     }
 
     #[test]
     fn dangling() {
-        let concrete_value = NonCopy;
+        let concrete_value = Box::new(NonCopy::new());
         let ref_value = &concrete_value;
         let scope = Scope::new(ref_value);
         let sarc = scope.lift();
-        sarc.do_nothing();
+        sarc.access_value();
         let result = std::panic::catch_unwind(|| {
             std::mem::drop(scope);
         });
@@ -99,24 +104,24 @@ mod tests {
 
     #[test]
     fn valid() {
-        let concrete_value = NonCopy;
+        let concrete_value = Box::new(NonCopy::new());
         let ref_value = &concrete_value;
         let scope = Scope::new(ref_value);
         let sarc = scope.lift();
-        sarc.do_nothing();
+        sarc.access_value();
         std::mem::drop(sarc);
         std::mem::drop(scope);
     }
 
     #[tokio::test]
     async fn async_dangling() {
-        let concrete_value = NonCopy;
+        let concrete_value = Box::new(NonCopy::new());
         let ref_value = &concrete_value;
         let scope = Scope::new(ref_value);
         let sarc = scope.lift();
-        sarc.do_nothing();
+        sarc.access_value();
         tokio::spawn(async move {
-            sarc.do_nothing();
+            sarc.access_value();
         });
         let result = std::panic::catch_unwind(|| {
             std::mem::drop(scope);
@@ -129,16 +134,35 @@ mod tests {
 
     #[tokio::test]
     async fn async_valid() {
-        let concrete_value = NonCopy;
+        let concrete_value = Box::new(NonCopy::new());
         let ref_value = &concrete_value;
         let scope = Scope::new(ref_value);
         let sarc = scope.lift();
-        sarc.do_nothing();
+        sarc.access_value();
         tokio::spawn(async move {
-            sarc.do_nothing();
+            sarc.access_value();
         })
         .await
         .unwrap();
         std::mem::drop(scope);
+    }
+
+    #[test]
+    fn undefined_behavior() {
+        let concrete_value = Box::new(NonCopy::new());
+        let ref_value = &concrete_value;
+        let scope = Scope::new(ref_value);
+        let sarc = scope.lift();
+        sarc.access_value();
+        std::mem::forget(scope);
+        std::mem::drop(concrete_value);
+        let result = std::panic::catch_unwind(|| {
+            // The assert here should fail (Showing UB) in a testable way
+            sarc.access_value();
+        });
+        assert!(
+            result.is_err(),
+            "Forgetting the scope, dropping the underlying, then accessing an SArc value should be UB"
+        );
     }
 }
