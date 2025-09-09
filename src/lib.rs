@@ -8,13 +8,13 @@ use std::{
 ///
 /// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value - `std::mem::forget(scope)`.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Scope<'a, T: 'static> {
+pub struct Scope<'a, T: 'static> {
     data: Arc<&'static T>,
     _scope: PhantomData<&'a ()>,
 }
 
 impl<'a, T: 'static> Scope<'a, T> {
-    fn new(value: &'a T) -> Self {
+    pub fn new(value: &'a T) -> Self {
         let value = unsafe { mem::transmute::<&'a T, &'static T>(value) };
         let arc = Arc::new(value);
         Scope {
@@ -25,7 +25,7 @@ impl<'a, T: 'static> Scope<'a, T> {
 
     /// Lifts reference with lifetime `'a` out of the scope into `'static` and relies on runtime
     /// Checks to ensure safety.
-    fn lift(&self) -> SArc<T> {
+    pub fn lift(&self) -> SArc<T> {
         SArc(self.data.clone())
     }
 }
@@ -61,7 +61,7 @@ impl<'a, T: 'static> Drop for Scope<'a, T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct SArc<T: 'static>(Arc<&'static T>);
+pub struct SArc<T: 'static>(Arc<&'static T>);
 
 impl<T: 'static> Deref for SArc<T> {
     type Target = T;
