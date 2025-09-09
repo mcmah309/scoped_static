@@ -19,6 +19,7 @@ use std::{marker::PhantomData, mem, ops::Deref};
 ///         // Lifted is 'static so it can be moved into this closure that needs 'static
 ///         let value = **lifted + 1.0;
 ///         assert_eq!(value, 2.0);
+///         // `lifted` is dropped here
 ///     })
 ///     .await
 ///     .unwrap();
