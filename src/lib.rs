@@ -7,7 +7,7 @@ use std::{marker::PhantomData, mem, ops::Deref};
 /// dropped. 
 /// 
 /// ```rust
-/// use scope::Scoped;
+/// use scope_lift::Scoped;
 /// 
 /// #[tokio::main]
 /// async fn main() {

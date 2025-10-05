@@ -1,6 +1,8 @@
 [package]
-name = "scope"
-version = "0.1.0"
+name = "scoped_static"
+description = "Safe promotion of lifetimes to static"
+license = "Apache-2.0"
+version = "0.0.1"
 edition = "2024"
 
 [dependencies]
