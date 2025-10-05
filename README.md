@@ -1,5 +1,10 @@
 # scoped_static
 
+[<img alt="github" src="https://img.shields.io/badge/github-mcmah309/scoped_static-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/mcmah309/scoped_static)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/scoped_static.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/scoped_static)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-scoped_static-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/scoped_static)
+[<img alt="test status" src="https://img.shields.io/github/actions/workflow/status/mcmah309/scoped_static/test.yml?branch=master&style=for-the-badge" height="20">](https://github.com/mcmah309/scoped_static/actions?query=branch%3Amaster)
+
 > **Lift references into `'static` safely — at runtime.**
 
 `scoped_static` allows temporarily extending a reference’s lifetime to `'static` using runtime safety checks.
