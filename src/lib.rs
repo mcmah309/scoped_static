@@ -242,7 +242,7 @@ mod checked_tests {
 /// But at the cost of risking additional UB if not used correctly. See UB notes below.
 /// Only consider using over [`ScopedGuard`] if one is certain this is dropped after all derived
 /// scoped values.
-/// 
+///
 /// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`UncheckedScoped`]).
 /// Runtime checks are used to ensure that no derived [`UncheckedScoped`] exists when this [`UncheckedScopeGuard`] is
 /// dropped.
@@ -274,7 +274,7 @@ mod checked_tests {
 ///
 /// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(guard)`) -
 /// the `Drop` code must run to prevent undefined behavior.
-/// 
+///
 /// UNDEFINED BEHAVIOR: If the`checked` feature flag is not enabled, in non-debug mode,
 /// this may cause undefined behavior if [`UncheckedScopedGuard`] is drop before all derived [`UncheckedScoped`] are dropped.
 /// This is because there are no runtime safety checks in this scenario and the program will not abort.
