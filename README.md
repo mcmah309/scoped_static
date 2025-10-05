@@ -7,7 +7,7 @@ This enables you to safely spawn asynchronous tasks, threads, or other `'static`
 
 ---
 
-## ✨ Motivation
+## Motivation
 
 Rust’s lifetime system ensures safety at compile time, but sometimes you need to move a non-`'static` reference into an async task or thread:
 
@@ -31,7 +31,7 @@ This fails because the reference to `ref_value` isn’t `'static`.
 
 ---
 
-## 🚀 Example
+## Example
 
 ```rust
 use scoped_static::ScopeGuard;
