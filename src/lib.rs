@@ -367,15 +367,13 @@ impl<'a, T: 'static> Drop for UncheckedScopeGuard<'a, T> {
 
 /// A reference derived from a [`UncheckedScopeGuard`]. The lifetime of the underlying
 /// value has been lifted to `'static`. See [`UncheckedScopeGuard`] for more info.
-#[cfg(any(feature = "checked", debug_assertions))]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UncheckedScoped<T: 'static>(Arc<&'static T>);
-
-/// A reference derived from a [`UncheckedScopeGuard`]. The lifetime of the underlying
-/// value has been lifted to `'static`. See [`UncheckedScopeGuard`] for more info.
-#[cfg(not(any(feature = "checked", debug_assertions)))]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UncheckedScoped<T: 'static>(&'static T);
+pub struct UncheckedScoped<T: 'static>(
+    #[cfg(any(feature = "checked", debug_assertions))] 
+    Arc<&'static T>,
+    #[cfg(not(any(feature = "checked", debug_assertions)))]
+    &'static T,
+);
 
 #[cfg(any(feature = "checked", debug_assertions))]
 impl<T: 'static> Deref for UncheckedScoped<T> {
