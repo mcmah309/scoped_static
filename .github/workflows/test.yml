@@ -23,9 +23,9 @@ jobs:
     - name: Run tests release
       run: cargo test --release --verbose
     - name: Run tests no default features
-      run: cargo test --verbose --no-default-features
+      run: cargo test --verbose --all-features
     - name: Run tests release no default features
-      run: cargo test --release --verbose --no-default-features
+      run: cargo test --release --verbose --all-features
 
     - name: Set up Rust (nightly) for Miri
       uses: actions-rs/toolchain@v1
