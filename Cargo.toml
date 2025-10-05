@@ -15,3 +15,7 @@ default = []
 # Enabling will force checks for the unchecked types. Making them perform exactly like
 # the checked versions.
 checked = []
+
+[package.metadata.docs.rs]
+all-features = false
+rustdoc-args = ["--cfg", "docsrs"]

@@ -1,3 +1,6 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![doc = include_str!("../README.md")]
+
 use std::sync::Arc;
 use std::{marker::PhantomData, mem, ops::Deref};
 
