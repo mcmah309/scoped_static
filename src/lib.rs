@@ -243,7 +243,7 @@ mod checked_tests {
 
 /// Works like a [`ScopeGuard`], except more performant in release-like modes, since no checks are used.
 /// But at the cost of risking additional UB if not used correctly. See UB notes below.
-/// Only consider using over [`ScopedGuard`] if one is certain this is dropped after all derived
+/// Only consider using over [`ScopeGuard`] if one is certain this is dropped after all derived
 /// scoped values.
 ///
 /// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`UncheckedScoped`]).
