@@ -1,8 +1,9 @@
 [package]
 name = "scoped_static"
 description = "Safe promotion of lifetimes to static"
+repository = "https://github.com/mcmah309/scoped_static"
 license = "Apache-2.0"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
