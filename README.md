@@ -39,7 +39,7 @@ This fails because the reference to `ref_value` isn’t `'static`.
 ## Example
 
 ```rust
-use scoped_static::{ScopeGuard, Scoped};
+use scoped_static::{ScopeGuard, ScopedRef};
 
 #[tokio::main]
 async fn main() {
@@ -48,10 +48,10 @@ async fn main() {
     // `guard` ensures no derived "lifted" values exist when dropped
     let guard = ScopeGuard::new(ref_value);
     // `lifted` holds a `'static` reference to `'ref_value`
-    let lifted: Scoped<Box<f64>> = guard.lift();
+    let lifted: ScopedRef<Box<f64>> = guard.lift();
     tokio::spawn(async move {
         // lifted moved here
-        let value = **lifted + 1.0;
+        let value = **unsafe { lifted.deref() } + 1.0;
         assert_eq!(value, 2.0);
         // lifted dropped
     })

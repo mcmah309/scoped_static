@@ -2,10 +2,10 @@
 #![doc = include_str!("../README.md")]
 
 use std::sync::Arc;
-use std::{marker::PhantomData, mem, ops::Deref};
+use std::{marker::PhantomData, mem};
 
-/// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`Scoped`]).
-/// Runtime checks are used to ensure that no derived [`Scoped`] exists when this [`ScopeGuard`] is
+/// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`ScopedRef`]).
+/// Runtime checks are used to ensure that no derived [`ScopedRef`] exists when this [`ScopeGuard`] is
 /// dropped.
 ///
 /// ```rust
@@ -19,7 +19,7 @@ use std::{marker::PhantomData, mem, ops::Deref};
 ///     let lifted = guard.lift();
 ///     tokio::spawn(async move {
 ///         // Lifted is 'static so it can be moved into this closure that needs 'static
-///         let value = **lifted + 1.0;
+///         let value = **unsafe { lifted.deref() } + 1.0;
 ///         assert_eq!(value, 2.0);
 ///         // `lifted` is dropped here
 ///     })
@@ -29,8 +29,8 @@ use std::{marker::PhantomData, mem, ops::Deref};
 /// }
 /// ```
 ///
-/// If a [`ScopeGuard`] is dropped while any derived [`Scoped`] exist, then it will abort the whole
-/// program (instead of panic). This is because [`Scoped`] could exist on another thread and be unaffected
+/// If a [`ScopeGuard`] is dropped while any derived [`ScopedRef`] exist, then it will abort the whole
+/// program (instead of panic). This is because [`ScopedRef`] could exist on another thread and be unaffected
 /// by the panic or the panic could be recovered from. This could lead to undefined behavior.
 ///
 /// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(guard)`) -
@@ -53,16 +53,8 @@ impl<'a, T: 'static> ScopeGuard<'a, T> {
 
     /// Lifts this reference with lifetime `'a` into `'static` and relies on runtime
     /// checks to ensure safety.
-    pub fn lift(&self) -> Scoped<T> {
-        return Scoped(self.data.clone());
-    }
-}
-
-impl<'a, T> Deref for ScopeGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.data.as_ref()
+    pub fn lift(&self) -> ScopedRef<T> {
+        return ScopedRef(self.data.clone());
     }
 }
 
@@ -102,12 +94,15 @@ impl<'a, T: 'static> Drop for ScopeGuard<'a, T> {
 /// A reference derived from a [`ScopeGuard`]. The lifetime of the underlying
 /// value has been lifted to `'static`. See [`ScopeGuard`] for more info.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Scoped<T: 'static>(Arc<&'static T>);
+pub struct ScopedRef<T: 'static>(Arc<&'static T>);
 
-impl<T: 'static> Deref for Scoped<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
+impl<T: 'static> ScopedRef<T> {
+    /// Gets the scoped reference
+    ///
+    /// UNDEFINED BEHAVIOR: This is marked as "unsafe" since it is undefined behavior to leak the derived `ScopeGuard` and
+    /// this can be accomplished in safe Rust - e.g. `mem::forget` or `Rc` cycles.
+    /// For all cases except this edge case, one case safely call this function.
+    pub unsafe fn deref(&self) -> &T {
         self.0.as_ref()
     }
 }
@@ -135,7 +130,7 @@ mod checked_tests {
             let ref_value = &concrete_value;
             let guard = ScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             let result = std::panic::catch_unwind(|| {
                 std::mem::drop(guard);
             });
@@ -151,7 +146,7 @@ mod checked_tests {
             let ref_value = &concrete_value;
             let guard = ScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             std::mem::drop(lifted);
             std::mem::drop(guard);
         }
@@ -162,9 +157,9 @@ mod checked_tests {
             let ref_value = &concrete_value;
             let guard = ScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             tokio::spawn(async move {
-                lifted.access_value();
+                unsafe { lifted.deref() }.access_value();
             });
             let result = std::panic::catch_unwind(|| {
                 std::mem::drop(guard);
@@ -181,9 +176,9 @@ mod checked_tests {
             let ref_value = &concrete_value;
             let guard = ScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             tokio::spawn(async move {
-                lifted.access_value();
+                unsafe { lifted.deref() }.access_value();
             })
             .await
             .unwrap();
@@ -201,12 +196,12 @@ mod checked_tests {
             let ref_value = &concrete_value;
             let guard = ScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             std::mem::forget(guard);
             std::mem::drop(concrete_value);
             let result = std::panic::catch_unwind(|| {
                 // The assert here should fail (Showing UB) in a testable way
-                lifted.access_value();
+                unsafe { lifted.deref() }.access_value();
             });
             assert!(
                 result.is_err(),
@@ -220,11 +215,11 @@ mod checked_tests {
             let ref_value = &concrete_value;
             let guard = ScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             let fut = tokio::spawn(async move {
                 let result = std::panic::catch_unwind(|| {
                     // The assert here should fail (Showing UB) in a testable way
-                    lifted.access_value();
+                    unsafe { lifted.deref() }.access_value();
                 });
                 result
             });
@@ -246,8 +241,8 @@ mod checked_tests {
 /// Only consider using over [`ScopeGuard`] if one is certain this is dropped after all derived
 /// scoped values.
 ///
-/// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`UncheckedScoped`]).
-/// Runtime checks are used to ensure that no derived [`UncheckedScoped`] exists when this [`UncheckedScopeGuard`] is
+/// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`UncheckedScopedRef`]).
+/// Runtime checks are used to ensure that no derived [`UncheckedScopedRef`] exists when this [`UncheckedScopeGuard`] is
 /// dropped.
 ///
 /// ```rust
@@ -261,7 +256,7 @@ mod checked_tests {
 ///     let lifted = guard.lift();
 ///     tokio::spawn(async move {
 ///         // Lifted is 'static so it can be moved into this closure that needs 'static
-///         let value = **lifted + 1.0;
+///         let value = **unsafe { lifted.deref() } + 1.0;
 ///         assert_eq!(value, 2.0);
 ///         // `lifted` is dropped here
 ///     })
@@ -271,15 +266,15 @@ mod checked_tests {
 /// }
 /// ```
 ///
-/// If a [`UncheckedScopeGuard`] is dropped while any derived [`UncheckedScoped`] exist, then it will abort the whole
-/// program (instead of panic). This is because [`UncheckedScoped`] could exist on another thread and be unaffected
+/// If a [`UncheckedScopeGuard`] is dropped while any derived [`UncheckedScopedRef`] exist, then it will abort the whole
+/// program (instead of panic). This is because [`UncheckedScopedRef`] could exist on another thread and be unaffected
 /// by the panic or the panic could be recovered from. This could lead to undefined behavior.
 ///
 /// UNDEFINED BEHAVIOR: It may cause undefined behavior to forget this value (`std::mem::forget(guard)`) -
 /// the `Drop` code must run to prevent undefined behavior.
 ///
 /// UNDEFINED BEHAVIOR: If the`checked` feature flag is not enabled, in non-debug mode,
-/// this may cause undefined behavior if [`UncheckedScopedGuard`] is drop before all derived [`UncheckedScoped`] are dropped.
+/// this may cause undefined behavior if [`UncheckedScopeGuard`] is drop before all derived [`UncheckedScopedRef`] are dropped.
 /// This is because there are no runtime safety checks in this scenario and the program will not abort.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UncheckedScopeGuard<'a, T: 'static> {
@@ -303,29 +298,11 @@ impl<'a, T: 'static> UncheckedScopeGuard<'a, T> {
 
     /// Lifts this reference with lifetime `'a` into `'static` and relies on runtime
     /// checks to ensure safety.
-    pub fn lift(&self) -> UncheckedScoped<T> {
+    pub fn lift(&self) -> UncheckedScopedRef<T> {
         #[cfg(any(feature = "checked", debug_assertions))]
-        return UncheckedScoped(self.data.clone());
+        return UncheckedScopedRef(self.data.clone());
         #[cfg(not(any(feature = "checked", debug_assertions)))]
-        return UncheckedScoped(self.data);
-    }
-}
-
-#[cfg(any(feature = "checked", debug_assertions))]
-impl<'a, T> Deref for UncheckedScopeGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.data.as_ref()
-    }
-}
-
-#[cfg(not(any(feature = "checked", debug_assertions)))]
-impl<'a, T> Deref for UncheckedScopeGuard<'a, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.data
+        return UncheckedScopedRef(self.data);
     }
 }
 
@@ -368,27 +345,19 @@ impl<'a, T: 'static> Drop for UncheckedScopeGuard<'a, T> {
 /// A reference derived from a [`UncheckedScopeGuard`]. The lifetime of the underlying
 /// value has been lifted to `'static`. See [`UncheckedScopeGuard`] for more info.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct UncheckedScoped<T: 'static>(
-    #[cfg(any(feature = "checked", debug_assertions))] 
-    Arc<&'static T>,
-    #[cfg(not(any(feature = "checked", debug_assertions)))]
-    &'static T,
+pub struct UncheckedScopedRef<T: 'static>(
+    #[cfg(any(feature = "checked", debug_assertions))] Arc<&'static T>,
+    #[cfg(not(any(feature = "checked", debug_assertions)))] &'static T,
 );
 
-#[cfg(any(feature = "checked", debug_assertions))]
-impl<T: 'static> Deref for UncheckedScoped<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
+impl<T: 'static> UncheckedScopedRef<T>  {
+    #[cfg(any(feature = "checked", debug_assertions))]
+    pub unsafe fn deref(&self) -> &T {
         self.0.as_ref()
     }
-}
 
-#[cfg(not(any(feature = "checked", debug_assertions)))]
-impl<T: 'static> Deref for UncheckedScoped<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
+    #[cfg(not(any(feature = "checked", debug_assertions)))]
+    pub unsafe fn deref(&self) -> &T {
         self.0
     }
 }
@@ -416,7 +385,7 @@ mod unchecked_tests {
             let ref_value = &concrete_value;
             let guard = UncheckedScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             let result = std::panic::catch_unwind(|| {
                 std::mem::drop(guard);
             });
@@ -438,7 +407,7 @@ mod unchecked_tests {
             let ref_value = &concrete_value;
             let guard = UncheckedScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             std::mem::drop(lifted);
             std::mem::drop(guard);
         }
@@ -449,9 +418,9 @@ mod unchecked_tests {
             let ref_value = &concrete_value;
             let guard = UncheckedScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             tokio::spawn(async move {
-                lifted.access_value();
+                unsafe { lifted.deref() }.access_value();
             });
             let result = std::panic::catch_unwind(|| {
                 std::mem::drop(guard);
@@ -474,9 +443,9 @@ mod unchecked_tests {
             let ref_value = &concrete_value;
             let guard = UncheckedScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             tokio::spawn(async move {
-                lifted.access_value();
+                unsafe { lifted.deref() }.access_value();
             })
             .await
             .unwrap();
@@ -494,12 +463,12 @@ mod unchecked_tests {
             let ref_value = &concrete_value;
             let guard = UncheckedScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             std::mem::forget(guard);
             std::mem::drop(concrete_value);
             let result = std::panic::catch_unwind(|| {
                 // The assert here should fail (Showing UB) in a testable way
-                lifted.access_value();
+                unsafe { lifted.deref() }.access_value();
             });
             assert!(
                 result.is_err(),
@@ -513,11 +482,11 @@ mod unchecked_tests {
             let ref_value = &concrete_value;
             let guard = UncheckedScopeGuard::new(ref_value);
             let lifted = guard.lift();
-            lifted.access_value();
+            unsafe { lifted.deref() }.access_value();
             let fut = tokio::spawn(async move {
                 let result = std::panic::catch_unwind(|| {
                     // The assert here should fail (Showing UB) in a testable way
-                    lifted.access_value();
+                    unsafe { lifted.deref() }.access_value();
                 });
                 result
             });
