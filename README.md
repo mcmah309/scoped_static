@@ -46,7 +46,7 @@ async fn main() {
     let value = Box::new(1.0);
     let ref_value = &value;
     // `guard` ensures no derived "lifted" values exist when dropped.
-    // The type is `&mut ScopedRefGuard<'_, Box<NonCopy>>`
+    // The type is `&mut ScopedRefGuard<'_, Box<f64>>`
     let guard = scoped_static!(ref_value);
     // `lifted` holds a `'static` reference to `'ref_value`
     // The type is `ScopedRef<Box<f64>>`
