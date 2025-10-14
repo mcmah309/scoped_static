@@ -73,7 +73,7 @@ pub struct ScopedRefGuard<'a, T: 'static> {
 }
 
 impl<'a, T: 'static> ScopedRefGuard<'a, T> {
-    /// Creates a new [`ScopedRefGuard`]. See [`scoped_static`] for a safe way to create
+    /// Creates a new [`ScopedRefGuard`]. See [`scoped_static`] for a safe way to create.
     pub unsafe fn new(value: &'a T) -> Self {
         let value = unsafe { mem::transmute::<&'a T, &'static T>(value) };
         let value = Arc::new(value);
