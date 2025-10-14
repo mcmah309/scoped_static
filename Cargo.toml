@@ -7,17 +7,13 @@ version = "0.1.1"
 edition = "2024"
 
 [dependencies]
-rclite = "0.3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 
 [features]
 default = []
-# Enabling will force checks for the unchecked types. Making them perform exactly like
-# the checked versions. This is intended to only be used for debug purposes.
-checked = []
 
 [package.metadata.docs.rs]
-all-features = false
+all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
