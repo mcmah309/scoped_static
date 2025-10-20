@@ -5,7 +5,7 @@ use std::{marker::PhantomData, mem, ops::Deref};
 
 /// A safe way to create a [`ScopedPinGuard`].
 /// ```rust
-/// use scoped_static::scoped_static;
+/// use scoped_static::scoped_pin_static;
 ///
 /// #[tokio::main]
 /// async fn main() {
