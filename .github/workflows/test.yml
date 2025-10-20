@@ -35,14 +35,20 @@ jobs:
     - name: Install Miri
       run: rustup component add miri
     - name: Run known safe tests with Miri
-      run: "MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib tests::normal_test::"
+      run: |
+        set -euo pipefail
+
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_ref::tests::normal_tests;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_ref::tests::macro_tests;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::normal_test;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::macro_tests;
     - name: Run tests that are known to fail with Miri
       run: |
         set -euo pipefail
 
         # List only test *functions* inside tests::ub_tests, keep their full paths
         TESTS=$(cargo test tests::ub_tests:: -- --list --format terse \
-          | sed -nE '/^tests::ub_tests::.*: test$/ { s/: test$//; p }')
+          | sed -nE '/.*::ub_tests::.*: test$/ { s/: test$//; p }')
 
         echo "UB tests found:"
         printf '%s\n' "$TESTS"
