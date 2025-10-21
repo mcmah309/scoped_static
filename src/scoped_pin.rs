@@ -5,13 +5,13 @@ use std::{marker::PhantomData, mem, ops::Deref};
 
 /// A safe way to create a [`ScopedPinGuard`].
 /// ```rust
-/// use scoped_static::scoped_pin_static;
+/// use scoped_static::scoped_pin;
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let concrete_value = Box::new(1.0);
 ///     let ref_value = &concrete_value;
-///     scoped_pin_static!(guard, ref_value);
+///     scoped_pin!(guard, ref_value);
 ///     let lifted = guard.lift();
 ///     tokio::spawn(async move {
 ///         // Lifted is 'static so it can be moved into this closure that needs 'static
@@ -25,7 +25,7 @@ use std::{marker::PhantomData, mem, ops::Deref};
 /// }
 /// ```
 #[macro_export]
-macro_rules! scoped_pin_static {
+macro_rules! scoped_pin {
     ($guard_ident:ident, $ref_value:expr) => {
         let mut $guard_ident = unsafe { $crate::ScopedPinGuard::new($ref_value) };
         let $guard_ident = &mut unsafe { std::pin::Pin::new_unchecked(&mut $guard_ident) };
@@ -69,7 +69,7 @@ macro_rules! scoped_pin_static {
 /// the `Drop` code must run to prevent undefined behavior.
 /// e.g. [`std::mem::forget`], [`std::mem::ManuallyDrop`], or Rc cycles, etc.
 ///
-/// See [`scoped_pin_static`] macro for a safe way to create.
+/// See [`scoped_pin`] macro for a safe way to create.
 #[derive(Debug)]
 pub struct ScopedPinGuard<'a, T: 'static> {
     value: &'static T,
@@ -309,7 +309,7 @@ mod tests {
         fn dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            scoped_pin_static!(guard, ref_value);
+            scoped_pin!(guard, ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             #[allow(dropping_references)]
@@ -320,7 +320,7 @@ mod tests {
         fn valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            scoped_pin_static!(guard, ref_value);
+            scoped_pin!(guard, ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             std::mem::drop(lifted);
@@ -333,7 +333,7 @@ mod tests {
         // async fn async_dangling() {
         //     let concrete_value = Box::new(NonCopy::new());
         //     let ref_value = &concrete_value;
-        //     scoped_pin_static!(guard, ref_value);
+        //     scoped_pin!(guard, ref_value);
         //     let lifted = guard.lift();
         //     lifted.access_value();
         //     #[allow(dropping_references)]
@@ -347,7 +347,7 @@ mod tests {
         async fn async_valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            scoped_pin_static!(guard, ref_value);
+            scoped_pin!(guard, ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             tokio::spawn(async move {
@@ -363,7 +363,7 @@ mod tests {
         fn undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            scoped_pin_static!(guard, ref_value);
+            scoped_pin!(guard, ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             #[allow(forgetting_references)]
@@ -375,7 +375,7 @@ mod tests {
         async fn async_undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            scoped_pin_static!(guard, ref_value);
+            scoped_pin!(guard, ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             let fut = tokio::spawn(async move {
