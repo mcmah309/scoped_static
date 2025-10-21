@@ -38,8 +38,8 @@ jobs:
       run: |
         set -euo pipefail
 
-        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_ref::tests::normal_tests;
-        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_ref::tests::macro_tests;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped::tests::normal_tests;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped::tests::macro_tests;
         MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::normal_test;
         MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::macro_tests;
     - name: Run tests that are known to fail with Miri
