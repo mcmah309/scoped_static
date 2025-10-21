@@ -1,15 +1,15 @@
 use std::sync::Arc;
 use std::{marker::PhantomData, mem, ops::Deref};
 
-/// A safe way to create a [`ScopedRefGuard`].
+/// A safe way to create a [`ScopedGuard`].
 /// ```rust
-/// use scoped_static::scoped_ref;
+/// use scoped_static::scoped;
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let concrete_value = Box::new(1.0);
 ///     let ref_value = &concrete_value;
-///     let guard = scoped_ref!(ref_value);
+///     let guard = scoped!(ref_value);
 ///     let lifted = guard.lift();
 ///     tokio::spawn(async move {
 ///         // Lifted is 'static so it can be moved into this closure that needs 'static
@@ -23,24 +23,24 @@ use std::{marker::PhantomData, mem, ops::Deref};
 /// }
 /// ```
 #[macro_export]
-macro_rules! scoped_ref {
+macro_rules! scoped {
     ($ref_value:expr) => {
-        &mut unsafe { $crate::ScopedRefGuard::new($ref_value) }
+        &mut unsafe { $crate::ScopedGuard::new($ref_value) }
     };
 }
 
-/// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`ScopedRef`]).
-/// Runtime checks are used to ensure that no derived [`ScopedRef`] exists when this [`ScopedRefGuard`] is
+/// A reference with lifetime `'a` that can be lifted to a reference with a `'static` lifetime ([`Scoped`]).
+/// Runtime checks are used to ensure that no derived [`Scoped`] exists when this [`ScopedGuard`] is
 /// dropped.
 ///
 /// ```rust
-/// use scoped_static::ScopedRefGuard;
+/// use scoped_static::ScopedGuard;
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     let concrete_value = Box::new(1.0);
 ///     let ref_value = &concrete_value;
-///     let guard = unsafe { ScopedRefGuard::new(ref_value) };
+///     let guard = unsafe { ScopedGuard::new(ref_value) };
 ///     let lifted = guard.lift();
 ///     tokio::spawn(async move {
 ///         // Lifted is 'static so it can be moved into this closure that needs 'static
@@ -54,8 +54,8 @@ macro_rules! scoped_ref {
 /// }
 /// ```
 ///
-/// If a [`ScopedRefGuard`] is dropped while any derived [`ScopedRef`] exist, then it will abort the whole
-/// program (instead of panic). This is because [`ScopedRef`] could exist on another thread and be unaffected
+/// If a [`ScopedGuard`] is dropped while any derived [`Scoped`] exist, then it will abort the whole
+/// program (instead of panic). This is because [`Scoped`] could exist on another thread and be unaffected
 /// by the panic or the panic could be recovered from. This could lead to undefined behavior.
 ///
 /// Unlike [`crate::ScopedPinGuard`] this uses boxing internally. Thus it is slightly less efficient, but it can be moved.
@@ -64,19 +64,19 @@ macro_rules! scoped_ref {
 /// the `Drop` code must run to prevent undefined behavior. 
 /// e.g. [`std::mem::forget`], [`std::mem::ManuallyDrop`], or Rc cycles, etc.
 ///
-/// See [`scoped_ref`] macro for a safe way to create.
+/// See [`scoped`] macro for a safe way to create.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScopedRefGuard<'a, T: 'static> {
+pub struct ScopedGuard<'a, T: 'static> {
     data: Arc<&'static T>,
     _scope: PhantomData<&'a ()>,
 }
 
-impl<'a, T: 'static> ScopedRefGuard<'a, T> {
-    /// Creates a new [`ScopedRefGuard`]. See [`scoped_ref`] for a safe way to create.
+impl<'a, T: 'static> ScopedGuard<'a, T> {
+    /// Creates a new [`ScopedGuard`]. See [`scoped`] for a safe way to create.
     pub unsafe fn new(value: &'a T) -> Self {
         let value = unsafe { mem::transmute::<&'a T, &'static T>(value) };
         let value = Arc::new(value);
-        ScopedRefGuard {
+        ScopedGuard {
             data: value,
             _scope: std::marker::PhantomData,
         }
@@ -84,12 +84,12 @@ impl<'a, T: 'static> ScopedRefGuard<'a, T> {
 
     /// Lifts this reference with lifetime `'a` into `'static` and relies on runtime
     /// checks to ensure safety.
-    pub fn lift(&self) -> ScopedRef<T> {
-        return ScopedRef(self.data.clone());
+    pub fn lift(&self) -> Scoped<T> {
+        return Scoped(self.data.clone());
     }
 }
 
-impl<'a, T> Deref for ScopedRefGuard<'a, T> {
+impl<'a, T> Deref for ScopedGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -97,7 +97,7 @@ impl<'a, T> Deref for ScopedRefGuard<'a, T> {
     }
 }
 
-impl<'a, T: 'static> Drop for ScopedRefGuard<'a, T> {
+impl<'a, T: 'static> Drop for ScopedGuard<'a, T> {
     fn drop(&mut self) {
         if std::sync::Arc::strong_count(&self.data) != 1 {
             const ROOT_MSG: &str = "Fatal error: Scope dropped while Lifted references still exist. \
@@ -130,12 +130,12 @@ impl<'a, T: 'static> Drop for ScopedRefGuard<'a, T> {
     }
 }
 
-/// A reference derived from a [`ScopedRefGuard`]. The lifetime of the underlying
-/// value has been lifted to `'static`. See [`ScopedRefGuard`] for more info.
+/// A reference derived from a [`ScopedGuard`]. The lifetime of the underlying
+/// value has been lifted to `'static`. See [`ScopedGuard`] for more info.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ScopedRef<T: 'static>(Arc<&'static T>);
+pub struct Scoped<T: 'static>(Arc<&'static T>);
 
-impl<T: 'static> Deref for ScopedRef<T> {
+impl<T: 'static> Deref for Scoped<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -158,14 +158,14 @@ mod tests {
 
     #[cfg(test)]
     mod normal_tests {
-        use super::super::ScopedRefGuard;
+        use super::super::ScopedGuard;
         use super::NonCopy;
 
         #[test]
         fn dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = unsafe { ScopedRefGuard::new(ref_value) };
+            let guard = unsafe { ScopedGuard::new(ref_value) };
             let lifted = guard.lift();
             lifted.access_value();
             let result = std::panic::catch_unwind(|| {
@@ -181,7 +181,7 @@ mod tests {
         fn valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = unsafe { ScopedRefGuard::new(ref_value) };
+            let guard = unsafe { ScopedGuard::new(ref_value) };
             let lifted = guard.lift();
             lifted.access_value();
             std::mem::drop(lifted);
@@ -192,7 +192,7 @@ mod tests {
         async fn async_dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = unsafe { ScopedRefGuard::new(ref_value) };
+            let guard = unsafe { ScopedGuard::new(ref_value) };
             let lifted = guard.lift();
             lifted.access_value();
             tokio::spawn(async move {
@@ -211,7 +211,7 @@ mod tests {
         async fn async_valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = unsafe { ScopedRefGuard::new(ref_value) };
+            let guard = unsafe { ScopedGuard::new(ref_value) };
             let lifted = guard.lift();
             lifted.access_value();
             tokio::spawn(async move {
@@ -225,14 +225,14 @@ mod tests {
 
     #[cfg(test)]
     mod ub_tests {
-        use super::super::ScopedRefGuard;
+        use super::super::ScopedGuard;
         use super::NonCopy;
 
         #[test]
         fn undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = unsafe { ScopedRefGuard::new(ref_value) };
+            let guard = unsafe { ScopedGuard::new(ref_value) };
             let lifted = guard.lift();
             lifted.access_value();
             std::mem::forget(guard);
@@ -251,7 +251,7 @@ mod tests {
         async fn async_undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = unsafe { ScopedRefGuard::new(ref_value) };
+            let guard = unsafe { ScopedGuard::new(ref_value) };
             let lifted = guard.lift();
             lifted.access_value();
             let fut = tokio::spawn(async move {
@@ -281,7 +281,7 @@ mod tests {
         fn dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = scoped_ref!(ref_value);
+            let guard = scoped!(ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             #[allow(dropping_references)]
@@ -292,7 +292,7 @@ mod tests {
         fn valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = scoped_ref!(ref_value);
+            let guard = scoped!(ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             std::mem::drop(lifted);
@@ -305,7 +305,7 @@ mod tests {
         async fn async_dangling() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = scoped_ref!(ref_value);
+            let guard = scoped!(ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             tokio::spawn(async move {
@@ -319,7 +319,7 @@ mod tests {
         async fn async_valid() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = scoped_ref!(ref_value);
+            let guard = scoped!(ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             tokio::spawn(async move {
@@ -335,7 +335,7 @@ mod tests {
         fn undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = scoped_ref!(ref_value);
+            let guard = scoped!(ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             #[allow(forgetting_references)]
@@ -347,7 +347,7 @@ mod tests {
         async fn async_undefined_behavior() {
             let concrete_value = Box::new(NonCopy::new());
             let ref_value = &concrete_value;
-            let guard = scoped_ref!(ref_value);
+            let guard = scoped!(ref_value);
             let lifted = guard.lift();
             lifted.access_value();
             let fut = tokio::spawn(async move {

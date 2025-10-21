@@ -39,17 +39,17 @@ This fails because the reference to `ref_value` isn’t `'static`.
 ## Example
 
 ```rust
-use scoped_static::{scoped_ref, ScopedRefGuard};
+use scoped_static::{scoped, ScopedGuard};
 
 #[tokio::main]
 async fn main() {
     let value = Box::new(1.0);
     let ref_value = &value;
     // `guard` ensures no derived "lifted" values exist when dropped.
-    // The type is `&mut ScopedRefGuard<'_, Box<f64>>`
-    let guard = scoped_ref!(ref_value);
+    // The type is `&mut ScopedGuard<'_, Box<f64>>`
+    let guard = scoped!(ref_value);
     // `lifted` holds a `'static` reference to `'ref_value`
-    // The type is `ScopedRef<Box<f64>>`
+    // The type is `Scoped<Box<f64>>`
     let lifted = guard.lift();
     tokio::spawn(async move {
         // `lifted` moved here
@@ -65,4 +65,4 @@ async fn main() {
 }
 ```
 
-See [ScopedRefGuard](https://docs.rs/scoped_static/latest/scoped_static/struct.ScopedRefGuard.html) for more info.
+See [ScopedGuard](https://docs.rs/scoped_static/latest/scoped_static/struct.ScopedGuard.html) for more info.
