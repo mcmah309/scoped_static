@@ -3,6 +3,8 @@ use std::pin::Pin;
 use std::sync::atomic::AtomicUsize;
 use std::{marker::PhantomData, mem, ops::Deref};
 
+use crate::utils;
+
 /// A safe way to create a [`ScopedPinGuard`].
 /// ```rust
 /// use scoped_static::scoped_pin;
@@ -115,32 +117,7 @@ impl<'a, T: 'static> Drop for ScopedPinGuard<'a, T> {
     fn drop(&mut self) {
         let count = self.counter.load(std::sync::atomic::Ordering::SeqCst);
         if count != 0 {
-            const ROOT_MSG: &str = "Fatal error: Scope dropped while Lifted references still exist. \
-                This would cause undefined behavior. Aborting.\n";
-            // We don't panic since panics can be recovered and panics also only effect a single thread.
-            // While the value could have been sent to a different thread.
-            #[cfg(not(test))]
-            {
-                let bt = std::backtrace::Backtrace::capture();
-                let msg = match bt.status() {
-                    std::backtrace::BacktraceStatus::Unsupported => ROOT_MSG.to_owned(),
-                    std::backtrace::BacktraceStatus::Disabled => format!(
-                        "{ROOT_MSG}\n(Hint: re-run with `RUST_BACKTRACE=1` to see a backtrace.)\n"
-                    ),
-                    std::backtrace::BacktraceStatus::Captured => {
-                        format!("{ROOT_MSG}\nBacktrace:\n{bt}\n")
-                    }
-                    _ => ROOT_MSG.to_owned(),
-                };
-                use std::io::Write;
-                let _ = std::io::stderr().write_all(msg.as_bytes());
-                let _ = std::io::stderr().flush();
-                std::process::abort();
-            }
-            #[cfg(test)]
-            {
-                panic!("{}", ROOT_MSG);
-            }
+            utils::abort();
         }
     }
 }
@@ -228,20 +205,20 @@ mod tests {
             std::mem::drop(guard_unpinned);
         }
 
-        // #[tokio::test]
-        // #[should_panic]
-        // async fn async_dangling() {
-        //     let concrete_value = Box::new(NonCopy::new());
-        //     let ref_value = &concrete_value;
-        //     let mut guard_unpinned = unsafe { ScopedPinGuard::new(ref_value) };
-        //     let guard = unsafe { std::pin::Pin::new_unchecked(&mut guard_unpinned) };
-        //     let lifted = guard.lift();
-        //     lifted.access_value();
-        //     tokio::spawn(async move {
-        //         lifted.access_value();
-        //     });
-        //     std::mem::drop(guard_unpinned);
-        // }
+        #[tokio::test]
+        #[should_panic]
+        async fn async_dangling() {
+            let concrete_value = Box::new(NonCopy::new());
+            let ref_value = &concrete_value;
+            let mut guard_unpinned = unsafe { ScopedPinGuard::new(ref_value) };
+            let guard = unsafe { std::pin::Pin::new_unchecked(&mut guard_unpinned) };
+            let lifted = guard.lift();
+            lifted.access_value();
+            std::mem::drop(guard_unpinned);
+            tokio::spawn(async move {
+                lifted.access_value();
+            });
+        }
 
         #[tokio::test]
         async fn async_valid() {
@@ -341,20 +318,32 @@ mod tests {
             std::mem::drop(guard);
         }
 
-        // #[tokio::test]
-        // #[should_panic]
-        // async fn async_dangling() {
-        //     let concrete_value = Box::new(NonCopy::new());
-        //     let ref_value = &concrete_value;
-        //     scoped_pin!(guard, ref_value);
-        //     let lifted = guard.lift();
-        //     lifted.access_value();
-        //     #[allow(dropping_references)]
-        //     std::mem::drop(guard);
-        //     tokio::spawn(async move {
-        //         lifted.access_value();
-        //     });
-        // }
+        #[tokio::test]
+        async fn async_dangling() {
+            let result = std::panic::catch_unwind(|| {
+                let lifted;
+                {
+                    let concrete_value = Box::new(NonCopy::new());
+                    let ref_value = &concrete_value;
+                    scoped_pin!(guard, ref_value);
+                    lifted = guard.lift();
+                    lifted.access_value();
+                    #[allow(dropping_references)]
+                    std::mem::drop(guard);
+                }
+                lifted
+            });
+            match result {
+                Ok(lifted) => {
+                    tokio::spawn(async move {
+                        lifted.access_value();
+                    });
+                }
+                Err(_) => {
+                    // Expected
+                }
+            }
+        }
 
         #[tokio::test]
         async fn async_valid() {

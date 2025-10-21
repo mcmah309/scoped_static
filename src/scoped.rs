@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use std::{marker::PhantomData, mem, ops::Deref};
 
+use crate::utils;
+
 /// A safe way to create a [`ScopedGuard`].
 /// ```rust
 /// use scoped_static::scoped;
@@ -61,7 +63,7 @@ macro_rules! scoped {
 /// Unlike [`crate::ScopedPinGuard`] this uses boxing internally. Thus it is slightly less efficient, but it can be moved.
 ///
 /// UNDEFINED BEHAVIOR: It may cause undefined behavior to leak/forget this value. Since
-/// the `Drop` code must run to prevent undefined behavior. 
+/// the `Drop` code must run to prevent undefined behavior.
 /// e.g. [`std::mem::forget`], [`std::mem::ManuallyDrop`], or Rc cycles, etc.
 ///
 /// See [`scoped`] macro for a safe way to create.
@@ -100,32 +102,7 @@ impl<'a, T> Deref for ScopedGuard<'a, T> {
 impl<'a, T: 'static> Drop for ScopedGuard<'a, T> {
     fn drop(&mut self) {
         if std::sync::Arc::strong_count(&self.data) != 1 {
-            const ROOT_MSG: &str = "Fatal error: Scope dropped while Lifted references still exist. \
-                This would cause undefined behavior. Aborting.\n";
-            // We don't panic since panics can be recovered and panics also only effect a single thread.
-            // While the value could have been sent to a different thread.
-            #[cfg(not(test))]
-            {
-                let bt = std::backtrace::Backtrace::capture();
-                let msg = match bt.status() {
-                    std::backtrace::BacktraceStatus::Unsupported => ROOT_MSG.to_owned(),
-                    std::backtrace::BacktraceStatus::Disabled => format!(
-                        "{ROOT_MSG}\n(Hint: re-run with `RUST_BACKTRACE=1` to see a backtrace.)\n"
-                    ),
-                    std::backtrace::BacktraceStatus::Captured => {
-                        format!("{ROOT_MSG}\nBacktrace:\n{bt}\n")
-                    }
-                    _ => ROOT_MSG.to_owned(),
-                };
-                use std::io::Write;
-                let _ = std::io::stderr().write_all(msg.as_bytes());
-                let _ = std::io::stderr().flush();
-                std::process::abort();
-            }
-            #[cfg(test)]
-            {
-                panic!("{}", ROOT_MSG);
-            }
+            utils::abort();
         }
     }
 }

@@ -3,6 +3,7 @@
 
 mod scoped_pin;
 mod scoped;
+mod utils;
 
 pub use scoped_pin::{ScopedPin, ScopedPinGuard};
 pub use scoped::{Scoped, ScopedGuard};

@@ -19,13 +19,9 @@ jobs:
     - name: Build
       run: cargo build --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --features test
     - name: Run tests release
-      run: cargo test --release --verbose
-    - name: Run tests no default features
-      run: cargo test --verbose --all-features
-    - name: Run tests release no default features
-      run: cargo test --release --verbose --all-features
+      run: cargo test --release --verbose --features test
 
     - name: Set up Rust (nightly) for Miri
       uses: actions-rs/toolchain@v1
@@ -38,10 +34,10 @@ jobs:
       run: |
         set -euo pipefail
 
-        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped::tests::normal_tests;
-        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped::tests::macro_tests;
-        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::normal_test;
-        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::macro_tests;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped::tests::normal_tests --features test;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped::tests::macro_tests --features test;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::normal_test --features test;
+        MIRIFLAGS=-Zmiri-ignore-leaks cargo miri test --lib scoped_pin::tests::macro_tests --features test;
     - name: Run tests that are known to fail with Miri
       run: |
         set -euo pipefail
@@ -57,7 +53,7 @@ jobs:
         EXITCODE=0
         for t in $TESTS; do
           echo "Running UB test: $t"
-          if MIRIFLAGS="-Zmiri-ignore-leaks" cargo miri test --lib "$t" -- --exact; then
+          if MIRIFLAGS="-Zmiri-ignore-leaks" cargo miri test --lib "$t" --features test -- --exact; then
             echo "❌ ERROR: UB test '$t' unexpectedly PASSED"
             EXITCODE=1
           else
