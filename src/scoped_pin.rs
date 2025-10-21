@@ -147,7 +147,7 @@ impl<'a, T: 'static> Drop for ScopedPinGuard<'a, T> {
 
 /// A reference derived from a [`ScopedPinGuard`]. The lifetime of the underlying
 /// value has been lifted to `'static`. See [`ScopedPinGuard`] for more info.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ScopedPin<T: 'static> {
     value: &'static T,
     counter: *const AtomicUsize,
@@ -161,6 +161,19 @@ impl<T: 'static> Deref for ScopedPin<T> {
 
     fn deref(&self) -> &Self::Target {
         self.value
+    }
+}
+
+impl Clone for ScopedPin<&'_ mut u8> {
+    fn clone(&self) -> Self {
+        unsafe {
+            let counter = &*self.counter;
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+        ScopedPin {
+            value: self.value,
+            counter: self.counter,
+        }
     }
 }
 
