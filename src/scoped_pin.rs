@@ -77,7 +77,7 @@ macro_rules! scoped_pin {
 pub struct ScopedPinGuard<'a, T: 'static> {
     value: &'static T,
     counter: AtomicUsize,
-    _scope: PhantomData<&'a AtomicUsize>,
+    _scope: PhantomData<&'a ()>,
     _unpinnable: PhantomPinned,
 }
 
@@ -102,6 +102,7 @@ impl<'a, T: 'static> ScopedPinGuard<'a, T> {
         ScopedPin {
             value: self.value,
             counter: NonNull::from_ref(&self.counter),
+            _counter: PhantomData,
         }
     }
 }
@@ -129,6 +130,7 @@ impl<'a, T: 'static> Drop for ScopedPinGuard<'a, T> {
 pub struct ScopedPin<T: 'static> {
     value: &'static T,
     counter: NonNull<AtomicUsize>,
+    _counter: PhantomData<AtomicUsize>,
 }
 
 unsafe impl<T: 'static + Send> Send for ScopedPin<T> {}
@@ -142,7 +144,7 @@ impl<T: 'static> Deref for ScopedPin<T> {
     }
 }
 
-impl Clone for ScopedPin<&'_ mut u8> {
+impl<T: 'static> Clone for ScopedPin<T> {
     fn clone(&self) -> Self {
         unsafe {
             let counter = self.counter.as_ref();
@@ -151,6 +153,7 @@ impl Clone for ScopedPin<&'_ mut u8> {
         ScopedPin {
             value: self.value,
             counter: self.counter,
+            _counter: PhantomData,
         }
     }
 }
