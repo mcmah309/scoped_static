@@ -1,5 +1,6 @@
 use std::marker::PhantomPinned;
 use std::pin::Pin;
+use std::ptr::NonNull;
 use std::sync::atomic::AtomicUsize;
 use std::{marker::PhantomData, mem, ops::Deref};
 
@@ -76,7 +77,7 @@ macro_rules! scoped_pin {
 pub struct ScopedPinGuard<'a, T: 'static> {
     value: &'static T,
     counter: AtomicUsize,
-    _scope: PhantomData<&'a ()>,
+    _scope: PhantomData<&'a AtomicUsize>,
     _unpinnable: PhantomPinned,
 }
 
@@ -100,7 +101,7 @@ impl<'a, T: 'static> ScopedPinGuard<'a, T> {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         ScopedPin {
             value: self.value,
-            counter: &self.counter as *const AtomicUsize,
+            counter: NonNull::from_ref(&self.counter),
         }
     }
 }
@@ -127,7 +128,7 @@ impl<'a, T: 'static> Drop for ScopedPinGuard<'a, T> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ScopedPin<T: 'static> {
     value: &'static T,
-    counter: *const AtomicUsize,
+    counter: NonNull<AtomicUsize>,
 }
 
 unsafe impl<T: 'static + Send> Send for ScopedPin<T> {}
@@ -144,7 +145,7 @@ impl<T: 'static> Deref for ScopedPin<T> {
 impl Clone for ScopedPin<&'_ mut u8> {
     fn clone(&self) -> Self {
         unsafe {
-            let counter = &*self.counter;
+            let counter = self.counter.as_ref();
             counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
         ScopedPin {
@@ -157,7 +158,7 @@ impl Clone for ScopedPin<&'_ mut u8> {
 impl<T: 'static> Drop for ScopedPin<T> {
     fn drop(&mut self) {
         unsafe {
-            let counter = &*self.counter;
+            let counter = self.counter.as_ref();
             counter.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
         }
     }
