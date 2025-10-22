@@ -65,4 +65,4 @@ async fn main() {
 }
 ```
 
-See [ScopedGuard](https://docs.rs/scoped_static/latest/scoped_static/struct.ScopedGuard.html) for more info.
+See [ScopedGuard](https://docs.rs/scoped_static/latest/scoped_static/struct.ScopedGuard.html) and See [ScopedPinGuard](https://docs.rs/scoped_static/latest/scoped_static/struct.ScopedPinGuard.html) for more info.

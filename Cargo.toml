@@ -3,7 +3,7 @@ name = "scoped_static"
 description = "Safe promotion of lifetimes to static"
 repository = "https://github.com/mcmah309/scoped_static"
 license = "Apache-2.0"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 
 [dependencies]
@@ -16,5 +16,5 @@ default = []
 test = []
 
 [package.metadata.docs.rs]
-all-features = true
+all-features = false
 rustdoc-args = ["--cfg", "docsrs"]
