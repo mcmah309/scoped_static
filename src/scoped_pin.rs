@@ -65,7 +65,7 @@ macro_rules! scoped_pin {
 /// program (instead of panic). This is because [`ScopedPin`] could exist on another thread and be unaffected
 /// by the panic or the panic could be recovered from. This could lead to undefined behavior.
 ///
-/// Unlike [`crate::ScopedRefGuard`] this pins the guard to the current stack without boxing. Thus it is more
+/// Unlike [`crate::ScopedGuard`] this pins the guard to the current stack without boxing. Thus it is more
 /// efficient, but it cannot be moved.
 ///
 /// UNDEFINED BEHAVIOR: It may cause undefined behavior to leak/forget this value. Since
