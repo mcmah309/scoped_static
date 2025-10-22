@@ -102,7 +102,6 @@ impl<'a, T: 'static> ScopedPinGuard<'a, T> {
         ScopedPin {
             value: self.value,
             counter: NonNull::from_ref(&self.counter),
-            _counter: PhantomData,
         }
     }
 }
@@ -130,7 +129,6 @@ impl<'a, T: 'static> Drop for ScopedPinGuard<'a, T> {
 pub struct ScopedPin<T: 'static> {
     value: &'static T,
     counter: NonNull<AtomicUsize>,
-    _counter: PhantomData<AtomicUsize>,
 }
 
 unsafe impl<T: 'static + Send> Send for ScopedPin<T> {}
@@ -153,7 +151,6 @@ impl<T: 'static> Clone for ScopedPin<T> {
         ScopedPin {
             value: self.value,
             counter: self.counter,
-            _counter: PhantomData,
         }
     }
 }
